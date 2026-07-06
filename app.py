@@ -71,9 +71,16 @@ mode_key = st.sidebar.selectbox("Run mode", list(MODES.keys()), index=0,
 
 ticker = st.sidebar.text_input("Ticker", value="AAPL").upper().strip()
 
+# Rolling default window: ends today, starts ~10 months back. The agent needs
+# ~60 trading days of warm-up before its first decision, so the evaluated
+# period is roughly the last 7 months. Recent dates also sit safely after LLM
+# training cutoffs (no memorized-price leakage).
+_end_default   = dt.date.today()
+_start_default = _end_default - dt.timedelta(days=300)
+
 col_a, col_b = st.sidebar.columns(2)
-start = col_a.date_input("Start", value=dt.date(2024, 6, 1))
-end   = col_b.date_input("End",   value=dt.date(2024, 9, 30))
+start = col_a.date_input("Start", value=_start_default)
+end   = col_b.date_input("End",   value=_end_default)
 
 st.sidebar.markdown("**Portfolio & risk**")
 capital  = st.sidebar.number_input("Initial capital ($)", 1_000, 10_000_000, 100_000, step=1_000)
@@ -185,7 +192,7 @@ with tab_inspect:
     st.subheader("Inspect a single decision")
     st.caption("See the exact chart the agent looked at and how it reasoned.")
 
-    insp_date = st.date_input("Decision date", value=dt.date(2024, 9, 16),
+    insp_date = st.date_input("Decision date", value=dt.date.today() - dt.timedelta(days=7),
                               key="insp_date")
     go = st.button("🔍 Analyse this date", type="primary")
 
