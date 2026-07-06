@@ -92,10 +92,15 @@ if MODES[mode_key]["use_mock_llm"] is False:
     model = st.sidebar.selectbox("Model",
     ["openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"], index=0)
     api_key = st.sidebar.text_input("OpenRouter API key", type="password",
-        help="Used only for this session; never stored.")
+        help="Paste the full key from openrouter.ai/settings/keys "
+             "(starts with sk-or-v1-). Used only for this session; never stored.")
+    api_key = (api_key or "").strip()
     if api_key:
         os.environ["OPENAI_API_KEY"] = api_key
         os.environ["OPENAI_BASE_URL"] = "https://openrouter.ai/api/v1"
+        if not api_key.startswith("sk-or-"):
+            st.sidebar.warning("This doesn't look like an OpenRouter key "
+                               "(should start with sk-or-). Double-check it.")
 
 
 # ── Main area: tabs ──────────────────────────────────────────────────────────
