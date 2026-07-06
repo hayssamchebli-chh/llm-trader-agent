@@ -35,6 +35,24 @@ MODES = {
     "Full AI agent (GPT-4o)":    dict(use_mock_llm=False, use_synthetic=False),
 }
 
+# ── Selectable assets ────────────────────────────────────────────────────────
+# Gold and silver use the GLD/SLV ETFs: they trade like stocks, so both the
+# yfinance primary source and the Alpha Vantage cloud fallback support them
+# (futures symbols like GC=F are Yahoo-only and would break on Streamlit Cloud).
+ASSETS = {
+    "Apple (AAPL)":        "AAPL",
+    "Microsoft (MSFT)":    "MSFT",
+    "Nvidia (NVDA)":       "NVDA",
+    "Amazon (AMZN)":       "AMZN",
+    "Alphabet (GOOGL)":    "GOOGL",
+    "Meta (META)":         "META",
+    "Tesla (TSLA)":        "TSLA",
+    "JPMorgan (JPM)":      "JPM",
+    "ExxonMobil (XOM)":    "XOM",
+    "Gold ETF (GLD)":      "GLD",
+    "Silver ETF (SLV)":    "SLV",
+}
+
 st.set_page_config(page_title="LLM Trader Agent", page_icon="📈", layout="wide")
 
 # Cloud data fallback: expose ALPHAVANTAGE_API_KEY from Streamlit secrets to the
@@ -69,7 +87,8 @@ mode_key = st.sidebar.selectbox("Run mode", list(MODES.keys()), index=0,
     help="Demo needs nothing. Rule-based uses real prices, no API. "
          "Full AI calls GPT-4o and needs an API key.")
 
-ticker = st.sidebar.text_input("Ticker", value="AAPL").upper().strip()
+asset_label = st.sidebar.selectbox("Asset", list(ASSETS.keys()), index=0)
+ticker = ASSETS[asset_label]
 
 # Rolling default window: ends today, starts ~10 months back. The agent needs
 # ~60 trading days of warm-up before its first decision, so the evaluated
@@ -112,7 +131,7 @@ tab_run, tab_inspect, tab_about = st.tabs(
 # TAB 1 — BACKTEST
 # =============================================================================
 with tab_run:
-    st.subheader(f"Backtest — {ticker}")
+    st.subheader(f"Backtest — {asset_label}")
 
     if MODES[mode_key]["use_mock_llm"] is False and not os.environ.get("OPENAI_API_KEY"):
         st.warning("Full AI mode needs an OpenRouter API key (enter it in the sidebar).")
