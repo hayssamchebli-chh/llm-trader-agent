@@ -62,10 +62,27 @@ class DataFetcher:
         return self.fetch(ticker).index
 
     # ─────────────────────────────────────────────────────────────────────────
-    # yfinance download
+    # Download: yfinance first, Alpha Vantage fallback. Yahoo rate-limits
+    # cloud/datacenter IPs (e.g. Streamlit Cloud → YFRateLimitError); Alpha
+    # Vantage works there with a free API key (env var ALPHAVANTAGE_API_KEY).
     # ─────────────────────────────────────────────────────────────────────────
 
     def _download(self, ticker, start, end, interval) -> pd.DataFrame:
+        try:
+            return self._download_yfinance(ticker, start, end, interval)
+        except Exception as exc:
+            av_key = os.environ.get("ALPHAVANTAGE_API_KEY")
+            if av_key and interval == "1d":
+                logger.warning("yfinance failed for %s (%s) — trying Alpha Vantage",
+                               ticker, exc)
+                return self._download_alphavantage(ticker, start, end, av_key)
+            raise ValueError(
+                f"No data for {ticker} ({start} → {end}). yfinance failed ({exc}). "
+                f"On cloud hosts Yahoo often rate-limits; set ALPHAVANTAGE_API_KEY "
+                f"(free key from alphavantage.co) to enable the fallback source."
+            ) from exc
+
+    def _download_yfinance(self, ticker, start, end, interval) -> pd.DataFrame:
         import yfinance as yf
         raw = yf.download(ticker, start=start, end=end, interval=interval,
                           auto_adjust=True, progress=False)
@@ -74,6 +91,25 @@ class DataFetcher:
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
         df = raw[["Open", "High", "Low", "Close", "Volume"]].dropna().copy()
+        return self._ensure_utc(df)
+
+    def _download_alphavantage(self, ticker, start, end, api_key) -> pd.DataFrame:
+        # TIME_SERIES_DAILY is free-tier (25 req/day) and unadjusted; adequate
+        # for recent windows without splits. Results are cached to parquet.
+        url = ("https://www.alphavantage.co/query?function=TIME_SERIES_DAILY"
+               f"&symbol={ticker}&outputsize=full&datatype=csv&apikey={api_key}")
+        raw = pd.read_csv(url)
+        if "timestamp" not in raw.columns:
+            detail = raw.iloc[0, 0] if len(raw) else "empty response"
+            raise ValueError(f"Alpha Vantage error for {ticker}: {detail}")
+        raw["timestamp"] = pd.to_datetime(raw["timestamp"])
+        raw = raw.set_index("timestamp").sort_index()
+        raw = raw.rename(columns={"open": "Open", "high": "High", "low": "Low",
+                                  "close": "Close", "volume": "Volume"})
+        df = raw.loc[start:end, ["Open", "High", "Low", "Close", "Volume"]].dropna().copy()
+        if df.empty:
+            raise ValueError(f"No data for {ticker} ({start} → {end})")
+        logger.info("Alpha Vantage fallback data: %s (%d bars)", ticker, len(df))
         return self._ensure_utc(df)
 
     # ─────────────────────────────────────────────────────────────────────────

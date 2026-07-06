@@ -37,6 +37,14 @@ MODES = {
 
 st.set_page_config(page_title="LLM Trader Agent", page_icon="📈", layout="wide")
 
+# Cloud data fallback: expose ALPHAVANTAGE_API_KEY from Streamlit secrets to the
+# fetcher (Yahoo rate-limits cloud IPs; Alpha Vantage takes over when set).
+try:
+    if "ALPHAVANTAGE_API_KEY" in st.secrets:
+        os.environ.setdefault("ALPHAVANTAGE_API_KEY", st.secrets["ALPHAVANTAGE_API_KEY"])
+except Exception:
+    pass  # no secrets file configured (e.g. local run) — fine
+
 
 def build_config(mode_key, ticker, start, end, capital, max_pos, min_conf, model):
     m = MODES[mode_key]
