@@ -98,7 +98,8 @@ class BacktestEngine:
                     print(f"{as_of}  {signal.action.value:4s} "
                           f"conf={signal.confidence:.2f}  ${portfolio:,.0f}")
 
-            equity[date] = portfolio
+            # mark to market: cash plus the open position valued at today's close
+            equity[date] = portfolio + (position.shares * close if position else 0.0)
 
         # force-close at end
         if position is not None:
@@ -130,7 +131,7 @@ class BacktestEngine:
             notional = portfolio * signal.size_pct
             comm = notional * self.cfg.commission_pct
             shares = (notional - comm) / fill
-            portfolio -= comm
+            portfolio -= notional          # cash out: shares*fill + commission
             position = Position(signal.ticker, fill, shares,
                                 signal.stop_loss, signal.take_profit, as_of)
             logger.info("OPEN  %s %.4f @ %.2f", signal.ticker, shares, fill)
