@@ -81,7 +81,7 @@ def build_config(mode_key, ticker, start, end, capital, max_pos, min_conf, model
 
 # ── Sidebar: configuration ───────────────────────────────────────────────────
 st.sidebar.title("📈 LLM Trader Agent")
-st.sidebar.caption("Research prototype — not financial advice.")
+st.sidebar.caption("Research prototype.")
 
 mode_key = st.sidebar.selectbox("Run mode", list(MODES.keys()), index=0,
     help="Demo needs nothing. Rule-based uses real prices, no API. "
