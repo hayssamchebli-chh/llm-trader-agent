@@ -45,6 +45,12 @@ class BacktestResult:
     equity_curve: pd.Series
     signals:      List[TradeSignal] = field(default_factory=list)
     trades:       List[Dict]        = field(default_factory=list)
+    # Diagnostics — so a run that produced NO trades can be explained honestly
+    # (agent errors vs risk-filter rejections vs warm-up) instead of silently
+    # looking like a deliberate all-HOLD decision.
+    rejected:     List[TradeSignal] = field(default_factory=list)
+    errors:       List[Dict]        = field(default_factory=list)
+    n_warmup:     int               = 0
 
 
 class BacktestEngine:
@@ -70,6 +76,9 @@ class BacktestEngine:
         equity: Dict[pd.Timestamp, float] = {}
         signals: List[TradeSignal] = []
         trades:  List[Dict] = []
+        rejected: List[TradeSignal] = []
+        errors:  List[Dict] = []
+        n_warmup = 0
 
         for date in dates:
             as_of = date.strftime("%Y-%m-%d")
@@ -81,22 +90,28 @@ class BacktestEngine:
                                                         portfolio, trades)
 
             # 2) new signal
+            signal = None
             try:
                 signal = self._signal(ticker, as_of, close,
                                       self._drawdown(equity),
                                       1 if position else 0)
+                if signal is None:
+                    n_warmup += 1          # not enough history yet — expected
             except Exception as exc:
                 logger.error("Signal failed %s: %s", as_of, exc)
-                signal = None
+                errors.append({"as_of": as_of, "error": str(exc)})
 
             # 3) execute
-            if signal and signal.approved:
-                signals.append(signal)
-                portfolio, position = self._execute(signal, position, close,
-                                                     as_of, portfolio, trades)
-                if verbose:
-                    print(f"{as_of}  {signal.action.value:4s} "
-                          f"conf={signal.confidence:.2f}  ${portfolio:,.0f}")
+            if signal is not None:
+                if signal.approved:
+                    signals.append(signal)
+                    portfolio, position = self._execute(signal, position, close,
+                                                         as_of, portfolio, trades)
+                    if verbose:
+                        print(f"{as_of}  {signal.action.value:4s} "
+                              f"conf={signal.confidence:.2f}  ${portfolio:,.0f}")
+                else:
+                    rejected.append(signal)
 
             # mark to market: cash plus the open position valued at today's close
             equity[date] = portfolio + (position.shares * close if position else 0.0)
@@ -108,8 +123,11 @@ class BacktestEngine:
                                     last, portfolio, trades, "end_of_test")
 
         ec = pd.Series(equity, name="portfolio_value")
-        logger.info("Done %s  final=%.2f  trades=%d", ticker, portfolio, len(trades))
-        return BacktestResult(self.cfg, ticker, ec, signals, trades)
+        logger.info("Done %s  final=%.2f  trades=%d  approved=%d rejected=%d "
+                    "errors=%d warmup=%d", ticker, portfolio, len(trades),
+                    len(signals), len(rejected), len(errors), n_warmup)
+        return BacktestResult(self.cfg, ticker, ec, signals, trades,
+                              rejected=rejected, errors=errors, n_warmup=n_warmup)
 
     # ─────────────────────────────────────────────────────────────────────────
     def _signal(self, ticker, as_of, price, dd, open_n) -> Optional[TradeSignal]:

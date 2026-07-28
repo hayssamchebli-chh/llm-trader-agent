@@ -199,14 +199,37 @@ with tab_run:
 
         # Agent reasoning
         st.markdown("##### Agent decisions")
+
+        # Run health — report failures explicitly. A run where every LLM call
+        # errored must never be presented as if the agent chose to do nothing.
+        n_err, n_rej = len(result.errors), len(result.rejected)
+        if n_err:
+            st.error(
+                f"**{n_err} decision(s) FAILED — the agent produced no answer on "
+                f"those dates.** These are errors, not decisions; any result below "
+                f"is based only on the dates that succeeded.\n\n"
+                f"First error ({result.errors[0]['as_of']}): "
+                f"`{result.errors[0]['error'][:300]}`")
+        if n_rej:
+            st.warning(f"{n_rej} decision(s) were blocked by the risk filter — "
+                       f"e.g. {result.rejected[0].as_of}: "
+                       f"{result.rejected[0].reject_reason}")
+        if result.n_warmup:
+            st.caption(f"{result.n_warmup} early day(s) skipped: the agent needs "
+                       f"~60 trading days of history before its first decision.")
+
         if result.signals:
+            st.caption(f"{len(result.signals)} approved decision(s)"
+                       f"{' — showing first 25' if len(result.signals) > 25 else ''}:")
             for s in result.signals[:25]:
                 with st.expander(f"{s.as_of} — {s.action.value} "
                                  f"(confidence {s.confidence:.2f})"):
                     st.write(f"**Chart reading:** {s.chart_reading or '—'}")
                     st.write(f"**Rationale:** {s.rationale or '—'}")
-        else:
-            st.info("No approved signals — the risk filter gated every decision.")
+        elif not n_err and not n_rej:
+            st.info("No decisions were produced. The window is likely too short — "
+                    "it needs ~60 trading days of warm-up plus the period you want "
+                    "evaluated (so ~6 months minimum).")
 
 
 # =============================================================================
